@@ -1,0 +1,70 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# dbt
+.dbt/
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
+# Python
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+
+# Airflow
+logs/
+airflow/logs/
+
+# Data
+data/raw/
+data/clean/
+data/warehouse/
+*.parquet
+
+# Docker / MinIO runtime
+docker-data/
+
+# Databases
+*.duckdb
+*.db
+*.sqlite
+
+# Spark runtime
+.sparkStaging/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Flink runtime
+checkpoints/
+savepoints/
+flink-checkpoints/
+
+# Java/Maven build output
+**/target/
+*.class
+
+# Backup files
+*.bak*
+*docker-compose.yml.before-*
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Downloaded Java dependencies
+docker/airflow/jars/*.jar
+flink/lib/*.jar
+
+# Maven build output
+**/target/

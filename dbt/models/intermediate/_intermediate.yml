@@ -1,0 +1,103 @@
+version: 2
+
+models:
+  - name: int_weather_air_quality_joined
+    description: >
+      Hourly weather and air-quality data joined by city and UTC timestamp.
+
+    columns:
+      - name: city_hour_key
+        description: Unique key for one city at one UTC timestamp.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: measured_at_utc
+        data_tests:
+          - not_null
+
+  - name: int_air_quality_threshold_status
+    description: >
+      Hourly environmental data enriched with air-quality status
+      and alert classifications.
+
+    columns:
+      - name: city_hour_key
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('int_weather_air_quality_joined')
+                field: city_hour_key
+
+      - name: air_quality_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - unknown
+                  - invalid
+                  - good
+                  - moderate
+                  - unhealthy_for_sensitive_groups
+                  - unhealthy
+                  - very_unhealthy
+                  - hazardous
+
+      - name: air_quality_alert_level
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - unknown
+                  - none
+                  - warning
+                  - alert
+                  - severe
+                  - critical
+
+      - name: is_air_quality_alert
+        data_tests:
+          - not_null
+
+  - name: int_city_environment_hourly
+    description: >
+      Canonical hourly city environment dataset used as the base
+      for Gold marts.
+
+    columns:
+      - name: city_hour_key
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('int_air_quality_threshold_status')
+                field: city_hour_key
+
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: measured_at_utc
+        data_tests:
+          - not_null
+
+      - name: measurement_date_local
+        data_tests:
+          - not_null
+
+      - name: air_quality_status
+        data_tests:
+          - not_null
+
+      - name: is_air_quality_alert
+        data_tests:
+          - not_null

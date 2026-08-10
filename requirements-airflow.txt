@@ -1,0 +1,9 @@
+requests
+psycopg[binary]
+python-dotenv
+
+minio
+
+pyspark==4.1.3
+apache-airflow-providers-trino==6.6.0
+dbt-trino

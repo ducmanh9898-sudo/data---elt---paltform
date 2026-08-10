@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: stg_air_quality_hourly
+    description: >
+      Staging view containing normalized hourly air-quality
+      measurements from the Silver Iceberg table.
+
+    columns:
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: measured_at_utc
+        data_tests:
+          - not_null
+
+      - name: source_system
+        data_tests:
+          - not_null
+
+      - name: dataset_name
+        data_tests:
+          - not_null
+
+      - name: record_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - historical
+      - name: pm2_5
+        description: PM2.5 concentration in micrograms per cubic meter.
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 800
+
+      - name: pm10
+        description: PM10 concentration in micrograms per cubic meter.
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1200
+ 

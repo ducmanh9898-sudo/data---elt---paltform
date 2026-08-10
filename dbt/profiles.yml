@@ -1,0 +1,18 @@
+environment_platform:
+  target: dev
+
+  outputs:
+    dev:
+      type: trino
+      method: none
+
+      host: trino
+      port: 8080
+      user: dbt
+
+      database: iceberg
+      schema: staging
+
+      http_scheme: http
+      threads: 4
+      retries: 3

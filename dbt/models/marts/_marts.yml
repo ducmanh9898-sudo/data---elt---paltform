@@ -1,0 +1,229 @@
+version: 2
+
+models:
+  - name: gold_city_environment_hourly
+    description: >
+      Gold hourly environmental mart.
+      One row represents one city at one UTC hour.
+
+    columns:
+      - name: city_hour_key
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('int_city_environment_hourly')
+                field: city_hour_key
+
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: measured_at_utc
+        data_tests:
+          - not_null
+
+      - name: air_quality_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - unknown
+                  - invalid
+                  - good
+                  - moderate
+                  - unhealthy_for_sensitive_groups
+                  - unhealthy
+                  - very_unhealthy
+                  - hazardous
+
+      - name: air_quality_alert_level
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - unknown
+                  - none
+                  - warning
+                  - alert
+                  - severe
+                  - critical
+
+      - name: data_updated_at_utc
+        data_tests:
+          - not_null
+
+
+  - name: gold_city_environment_daily
+    description: >
+      Gold daily environmental mart.
+      One row represents one city and one local date.
+
+    columns:
+      - name: city_date_key
+        data_tests:
+          - not_null
+          - unique
+
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: measurement_date_local
+        data_tests:
+          - not_null
+
+      - name: observed_hour_count
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: worst_air_quality_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - unknown
+                  - invalid
+                  - good
+                  - moderate
+                  - unhealthy_for_sensitive_groups
+                  - unhealthy
+                  - very_unhealthy
+                  - hazardous
+
+      - name: data_updated_at_utc
+        data_tests:
+          - not_null
+
+
+  - name: gold_environmental_alerts
+    description: >
+      Gold mart containing hourly environmental alert records.
+
+    columns:
+      - name: alert_id
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('gold_city_environment_hourly')
+                field: city_hour_key
+
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: measured_at_utc
+        data_tests:
+          - not_null
+
+      - name: is_air_quality_alert
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                quote: false
+
+      - name: alert_severity
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - warning
+                  - high
+                  - severe
+                  - critical
+
+
+  - name: gold_weather_air_quality_correlation
+    description: >
+      City-level correlation mart between weather measurements
+      and air-quality measurements.
+
+    columns:
+      - name: city_id
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('gold_city_environment_hourly')
+                field: city_id
+
+      - name: observed_hour_count
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: corr_pm2_5_temperature
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: -1
+                max_value: 1
+
+      - name: corr_pm2_5_humidity
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: -1
+                max_value: 1
+
+      - name: corr_pm2_5_precipitation
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: -1
+                max_value: 1
+
+      - name: corr_pm2_5_wind_speed
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: -1
+                max_value: 1
+
+      - name: corr_pm10_temperature
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: -1
+                max_value: 1
+
+      - name: corr_pm10_humidity
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: -1
+                max_value: 1
+
+      - name: corr_pm10_precipitation
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: -1
+                max_value: 1
+
+      - name: corr_pm10_wind_speed
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: -1
+                max_value: 1
+
+      - name: data_updated_at_utc
+        data_tests:
+          - not_null

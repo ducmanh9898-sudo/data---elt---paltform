@@ -1,0 +1,29 @@
+version: 2
+
+sources:
+  - name: silver
+    description: >
+      Silver Iceberg tables created by Spark and queried through Trino.
+
+    database: iceberg
+    schema: silver
+
+    config:
+      freshness:
+        warn_after:
+          count: 36
+          period: hour
+        error_after:
+          count: 72
+          period: hour
+
+      loaded_at_field: crawled_at_utc
+
+    tables:
+      - name: air_quality_hourly
+        description: >
+          Clean hourly air-quality data produced by Spark.
+
+      - name: weather_hourly
+        description: >
+          Clean hourly weather data produced by Spark.

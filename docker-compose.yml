@@ -1,0 +1,707 @@
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+    args:
+      AIRFLOW_IMAGE_NAME: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.3.0-python3.13}
+
+  image: environment-airflow:3.3.0
+
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+      postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+
+    AIRFLOW__CORE__FERNET_KEY: ""
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+
+    AIRFLOW__CORE__AUTH_MANAGER: >-
+      airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: >-
+      http://airflow-apiserver:8080/execution/
+
+    AIRFLOW__API_AUTH__JWT_SECRET: >-
+      ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
+
+    AIRFLOW__API_AUTH__JWT_ISSUER: >-
+      ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
+    PYTHONPATH: /opt/airflow/src
+    # PostgreSQL backend của project
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: environment_backend
+    POSTGRES_USER: admin
+    POSTGRES_PASSWORD: admin
+
+    # MinIO Data Lake
+    MINIO_ENDPOINT: minio:9000
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    MINIO_BUCKET: environment-data
+    MINIO_SECURE: "false"
+
+    POLARIS_URI: ${POLARIS_URI}
+    POLARIS_CATALOG_NAME: ${POLARIS_CATALOG_NAME}
+    POLARIS_SCOPE: ${POLARIS_SCOPE:-PRINCIPAL_ROLE:ALL}
+    POLARIS_SPARK_CLIENT_ID: ${POLARIS_SPARK_CLIENT_ID}
+    POLARIS_SPARK_CLIENT_SECRET: ${POLARIS_SPARK_CLIENT_SECRET}
+    AWS_REGION: ${AWS_REGION:-us-east-1}
+    MINIO_ENDPOINT_INTERNAL: ${MINIO_ENDPOINT_INTERNAL:-http://minio:9000}
+    
+
+
+   
+
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./config:/opt/airflow/config
+    - ./plugins:/opt/airflow/plugins
+    - ./scripts:/opt/airflow/scripts
+    - ./docker/airflow/jars:/opt/airflow/jars:ro
+    - ./data:/opt/airflow/data
+    - ./dbt:/opt/airflow/dbt
+    - ./.dbt:/home/airflow/.dbt
+    - ./src:/opt/airflow/src:ro
+    - ./spark/jobs:/opt/airflow/spark/jobs:ro
+  user: "${AIRFLOW_UID:-50000}:0"
+
+  depends_on: &airflow-common-depends-on
+    airflow-postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: environment_postgres
+
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: environment_backend
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_backend_db.sql:/docker-entrypoint-initdb.d/init_backend_db.sql
+
+  minio:
+    image: minio/minio
+    container_name: environment_minio
+
+    command:
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    volumes:
+      - /mnt/d/environment-data-platform/docker-data/minio:/data
+
+
+  flink-jobmanager:
+    image: ${FLINK_IMAGE}
+    container_name: environment_flink_jobmanager
+
+    command: jobmanager
+
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        rest.address: flink-jobmanager
+        rest.bind-address: 0.0.0.0
+        jobmanager.memory.process.size: 2048m
+        parallelism.default: 2
+        
+        execution.checkpointing.interval: 10s
+        execution.checkpointing.mode: EXACTLY_ONCE
+
+        s3.endpoint: http://minio:9000
+        s3.access-key: minioadmin
+        s3.secret-key: minioadmin
+        s3.path.style.access: true
+        
+
+    ports:
+      - "8081:8081"
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+    volumes:
+     
+      - ./flink/config:/opt/flink/config
+      - ./flink/sql:/opt/flink/sql
+      
+    restart: unless-stopped
+
+
+  flink-taskmanager:
+    image: ${FLINK_IMAGE}
+    container_name: environment_flink_taskmanager
+
+    command: taskmanager
+
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 2048m
+        parallelism.default: 2
+        
+        execution.checkpointing.interval: 10s
+        
+
+        s3.endpoint: http://minio:9000
+        s3.access-key: minioadmin
+        s3.secret-key: minioadmin
+        s3.path.style.access: true
+
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+
+    volumes:
+    
+      - ./flink/config:/opt/flink/config
+      - ./flink/sql:/opt/flink/sql
+    restart: unless-stopped
+
+  spark-master:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+      args:
+        SPARK_BASE_IMAGE: ${SPARK_BASE_IMAGE}
+        HADOOP_AWS_VERSION: ${HADOOP_AWS_VERSION}
+        AWS_SDK_V2_BUNDLE_VERSION: ${AWS_SDK_V2_BUNDLE_VERSION}
+        ANALYTICS_ACCELERATOR_VERSION: ${ANALYTICS_ACCELERATOR_VERSION}
+        ICEBERG_VERSION: ${ICEBERG_VERSION}
+
+    image: environment-spark:4.1.3
+    container_name: environment_spark_master
+
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.master.Master
+      - --host
+      - spark-master
+      - --port
+      - "7077"
+      - --webui-port
+      - "8080"
+
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+
+      PYSPARK_PYTHON: python3
+      PYSPARK_DRIVER_PYTHON: python3
+
+      POLARIS_URI: http://polaris:8181/api/catalog
+      POLARIS_CATALOG_NAME: environment_catalog
+      POLARIS_SPARK_CLIENT_ID: ${POLARIS_SPARK_CLIENT_ID}
+      POLARIS_SPARK_CLIENT_SECRET: ${POLARIS_SPARK_CLIENT_SECRET}
+      POLARIS_SCOPE: PRINCIPAL_ROLE:ALL
+
+      AWS_REGION: us-east-1
+
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ENDPOINT_INTERNAL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_SECURE: "false"
+
+    
+
+    depends_on:
+      minio:
+        condition: service_started
+      polaris:
+        condition: service_started
+
+    volumes:
+      
+      - ./spark/jobs:/opt/spark/jobs:ro
+     
+
+    ports:
+      - "8090:8080"
+
+  
+
+    restart: unless-stopped
+
+  spark-worker:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+      args:
+        SPARK_BASE_IMAGE: ${SPARK_BASE_IMAGE}
+        HADOOP_AWS_VERSION: ${HADOOP_AWS_VERSION}
+        AWS_SDK_V2_BUNDLE_VERSION: ${AWS_SDK_V2_BUNDLE_VERSION}
+        ANALYTICS_ACCELERATOR_VERSION: ${ANALYTICS_ACCELERATOR_VERSION}
+        ICEBERG_VERSION: ${ICEBERG_VERSION}
+        
+      
+        
+
+    image: environment-spark:4.1.3
+    container_name: environment_spark_worker
+
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.worker.Worker
+      - --webui-port
+      - "8081"
+      - --cores
+      - "${SPARK_WORKER_CORES:-4}"
+      - --memory
+      - "${SPARK_WORKER_MEMORY:-2G}"
+      - spark://spark-master:7077
+
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_MASTER_URL: ${SPARK_MASTER_URL}
+
+      PYSPARK_PYTHON: python3
+
+      POLARIS_URI: http://polaris:8181/api/catalog
+      POLARIS_CATALOG_NAME: environment_catalog
+      POLARIS_SPARK_CLIENT_ID: ${POLARIS_SPARK_CLIENT_ID}
+      POLARIS_SPARK_CLIENT_SECRET: ${POLARIS_SPARK_CLIENT_SECRET}
+      POLARIS_SCOPE: PRINCIPAL_ROLE:ALL
+
+      AWS_REGION: us-east-1
+
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ENDPOINT_INTERNAL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_SECURE: "false"
+
+    volumes:
+      - ./spark/jobs:/opt/spark/jobs:ro
+      
+    depends_on:
+      spark-master:
+        condition: service_started
+      minio:
+        condition: service_started
+      polaris:
+        condition: service_started
+      
+
+    ports:
+      - "8091:8081"
+
+    restart: unless-stopped
+
+
+  polaris-postgres:
+    image: postgres:17
+    container_name: environment_polaris_postgres
+
+    environment:
+      POSTGRES_DB: ${POLARIS_DB_NAME}
+      POSTGRES_USER: ${POLARIS_DB_USER}
+      POSTGRES_PASSWORD: ${POLARIS_DB_PASSWORD}
+
+    volumes:
+      - polaris_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POLARIS_DB_USER} -d ${POLARIS_DB_NAME}
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+
+  polaris-bootstrap:
+    profiles:
+      - setup
+
+    image: ${POLARIS_ADMIN_IMAGE}
+    container_name: environment_polaris_bootstrap
+
+    environment:
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+
+      QUARKUS_DATASOURCE_JDBC_URL: >-
+        jdbc:postgresql://polaris-postgres:5432/${POLARIS_DB_NAME}
+
+      QUARKUS_DATASOURCE_USERNAME: ${POLARIS_DB_USER}
+      QUARKUS_DATASOURCE_PASSWORD: ${POLARIS_DB_PASSWORD}
+
+    command:
+      - bootstrap
+      - --realm=${POLARIS_REALM}
+      - --credential=${POLARIS_REALM},${POLARIS_CLIENT_ID},${POLARIS_CLIENT_SECRET}
+
+    depends_on:
+      polaris-postgres:
+        condition: service_healthy
+
+    restart: "no"
+
+  polaris:
+    image: ${POLARIS_IMAGE}
+    container_name: environment_polaris
+
+    environment:
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+
+      QUARKUS_DATASOURCE_JDBC_URL: >-
+        jdbc:postgresql://polaris-postgres:5432/${POLARIS_DB_NAME}
+
+      QUARKUS_DATASOURCE_USERNAME: ${POLARIS_DB_USER}
+      QUARKUS_DATASOURCE_PASSWORD: ${POLARIS_DB_PASSWORD}
+
+      POLARIS_REALM_CONTEXT_REALMS: ${POLARIS_REALM}
+
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL_S3: http://minio:9000
+
+      'polaris.features."ALLOW_SETTING_S3_ENDPOINTS"': "true"
+
+    ports:
+      - "8181:8181"
+      - "8182:8182"
+
+    depends_on:
+      polaris-postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+    restart: unless-stopped
+
+  airflow-postgres:
+    image: postgres:16
+    container_name: environment_airflow_postgres
+
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD
+        - pg_isready
+        - -U
+        - airflow
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    <<: *airflow-common
+
+    entrypoint: /bin/bash
+
+    command:
+      - -c
+      - |
+        /entrypoint airflow version
+
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+
+    user: "0:0"
+
+  airflow-apiserver:
+    <<: *airflow-common
+
+    command: api-server
+
+    ports:
+      - "8080:8080"
+
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - http://localhost:8080/api/v2/monitor/health
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    restart: always
+
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+
+    command: scheduler
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    restart: always
+
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+
+    command: dag-processor
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    restart: always
+
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  dbt:
+    build:
+      context: .
+      dockerfile: docker/dbt/Dockerfile
+      args:
+        DBT_TRINO_VERSION: ${DBT_TRINO_VERSION:-1.10.3}
+
+    image: environment-dbt:1.10.3
+    container_name: environment_dbt
+
+    working_dir: /usr/app/dbt
+
+    environment:
+      DBT_PROFILES_DIR: /usr/app/dbt
+
+    volumes:
+      - ./dbt:/usr/app/dbt
+      
+
+    depends_on:
+      trino:
+        condition: service_healthy
+
+  trino:
+    image: ${TRINO_IMAGE}
+    container_name: environment_trino
+
+
+    environment:
+      POLARIS_TRINO_CLIENT_ID: ${POLARIS_TRINO_CLIENT_ID}
+      POLARIS_TRINO_CLIENT_SECRET: ${POLARIS_TRINO_CLIENT_SECRET}
+
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+
+    ports:
+      - "8085:8080"
+
+    volumes:
+      - type: bind
+        source: ./trino/catalog/iceberg.properties
+        target: /etc/trino/catalog/iceberg.properties
+        read_only: true
+        bind:
+          create_host_path: false
+
+    depends_on:
+      polaris:
+        condition: service_started
+      minio:
+        condition: service_started
+
+    restart: no
+  
+  superset-postgres:
+    image: postgres:16
+    container_name: environment_superset_postgres
+    environment:
+      POSTGRES_DB: ${SUPERSET_DB:-superset}
+      POSTGRES_USER: ${SUPERSET_DB_USER:-superset}
+      POSTGRES_PASSWORD: ${SUPERSET_DB_PASSWORD:?SUPERSET_DB_PASSWORD is required}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${SUPERSET_DB_USER:-superset} -d ${SUPERSET_DB:-superset}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    volumes:
+      - superset_postgres_data:/var/lib/postgresql/data
+  superset:
+    image: environment-superset:6.1.0
+    container_name: environment_superset
+    depends_on:
+      superset-postgres:
+        condition: service_healthy
+    environment:
+      FLASK_APP: superset
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?SUPERSET_SECRET_KEY is required}
+
+      SUPERSET_DB: ${SUPERSET_DB:-superset}
+      SUPERSET_DB_USER: ${SUPERSET_DB_USER:-superset}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:?SUPERSET_DB_PASSWORD is required}
+
+      SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME:-admin}
+      SUPERSET_ADMIN_FIRSTNAME: ${SUPERSET_ADMIN_FIRSTNAME:-Environment}
+      SUPERSET_ADMIN_LASTNAME: ${SUPERSET_ADMIN_LASTNAME:-Admin}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@environment.local}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:?SUPERSET_ADMIN_PASSWORD is required}
+    command:
+      - /app/.venv/bin/superset
+      - run
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8088"
+      - --with-threads
+    ports:
+      - "8088:8088"
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: ./docker/superset/superset_config.py
+        target: /app/pythonpath/superset_config.py
+        read_only: true
+        bind:
+          create_host_path: false
+  kafka:
+    image: ${KAFKA_IMAGE}
+    container_name: environment_kafka
+    hostname: kafka
+    restart: unless-stopped
+
+    ports:
+      - "29092:29092"
+
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG_RETENTION_HOURS: 24
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+
+  iot-simulator:
+    build:
+      context: .
+      dockerfile: docker/streaming/Dockerfile
+    image: environment-iot-simulator:local
+    container_name: environment_iot_simulator
+    restart: unless-stopped
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+    command:
+      - python
+      - -u
+      - -m
+      - streaming.producer.iot_simulator
+      - --count
+      - "0"
+      - --interval-seconds
+      - "0.5"
+      - --bootstrap-servers
+      - kafka:9092
+
+volumes:
+  postgres_data:
+  airflow_postgres_data:
+  polaris_postgres_data:
+  superset_postgres_data:
+  kafka_data:

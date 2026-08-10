@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sensor_reading_v1.schema.json",
+  "title": "Environment Sensor Reading V1",
+  "description": "Contract for simulated environmental sensor readings published to Kafka.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_type",
+    "event_id",
+    "source_system",
+    "dataset_name",
+    "device_id",
+    "sequence_number",
+    "city_id",
+    "city_name",
+    "country_code",
+    "event_time_utc",
+    "produced_at_utc",
+    "temperature_2m",
+    "relative_humidity_2m",
+    "pm2_5",
+    "pm10",
+    "carbon_monoxide",
+    "nitrogen_dioxide"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "event_type": {
+      "type": "string",
+      "const": "environment.sensor_reading"
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "source_system": {
+      "type": "string",
+      "const": "iot_simulator"
+    },
+    "dataset_name": {
+      "type": "string",
+      "const": "sensor_readings"
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "city_id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 12
+    },
+    "city_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "country_code": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "event_time_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "produced_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "temperature_2m": {
+      "type": "number",
+      "minimum": -80,
+      "maximum": 70
+    },
+    "relative_humidity_2m": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "pm2_5": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2000
+    },
+    "pm10": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 3000
+    },
+    "carbon_monoxide": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100000
+    },
+    "nitrogen_dioxide": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2000
+    }
+  }
+}

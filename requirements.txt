@@ -1,0 +1,10 @@
+requests
+psycopg[binary]
+python-dotenv
+
+minio
+
+pyspark
+minio
+python-dotenv
+dbt-trino

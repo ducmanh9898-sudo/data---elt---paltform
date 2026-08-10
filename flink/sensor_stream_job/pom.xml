@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project
+    xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://maven.apache.org/POM/4.0.0
+        https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.environment.platform</groupId>
+    <artifactId>sensor-stream-job</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+
+    <properties>
+        <project.build.sourceEncoding>
+            UTF-8
+        </project.build.sourceEncoding>
+
+        <maven.compiler.release>
+            17
+        </maven.compiler.release>
+
+        <flink.version>
+            1.20.5
+        </flink.version>
+
+        <flink.kafka.connector.version>
+            3.4.0-1.20
+        </flink.kafka.connector.version>
+
+        <main.class>
+            com.environment.platform.streaming.KafkaValidationJob
+        </main.class>
+    </properties>
+
+    <dependencies>
+        <!-- Provided by the Flink cluster runtime -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-streaming-java</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
+            
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-clients</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
+          
+        </dependency>
+
+        <!-- Included inside the application fat JAR -->
+        <!-- Included inside the application fat JAR -->
+<dependency>
+    <groupId>org.apache.flink</groupId>
+    <artifactId>flink-connector-kafka</artifactId>
+    <version>${flink.kafka.connector.version}</version>
+</dependency>
+
+        <dependency>
+    <groupId>org.apache.iceberg</groupId>
+    <artifactId>iceberg-flink-runtime-1.20</artifactId>
+    <version>1.8.1</version>
+    <scope>provided</scope>
+</dependency>
+
+        <!-- JSON parsing and validation -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.2</version>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <finalName>sensor-stream-job</finalName>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+
+                <configuration>
+                    <release>
+                        ${maven.compiler.release}
+                    </release>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+
+                        <configuration>
+                            <createDependencyReducedPom>
+                                false
+                            </createDependencyReducedPom>
+                        
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+
+                                    <excludes>
+                                        <exclude>
+                                            META-INF/*.SF
+                                        </exclude>
+
+                                        <exclude>
+                                            META-INF/*.DSA
+                                        </exclude>
+
+                                        <exclude>
+                                            META-INF/*.RSA
+                                        </exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+
+                            <transformers>
+
+    <transformer
+        implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"
+    />
+
+    <transformer
+        implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+        <mainClass>
+            ${main.class}
+        </mainClass>
+    </transformer>
+
+</transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "event_type": "environment.sensor_reading",
+  "event_id": "67717d6f-fd96-4945-b6bc-f3db00476b92",
+  "source_system": "iot_simulator",
+  "dataset_name": "sensor_readings",
+  "device_id": "sensor-sg-001",
+  "sequence_number": 1,
+  "city_id": 12,
+  "city_name": "Singapore",
+  "country_code": "SG",
+  "event_time_utc": "2026-08-01T07:45:00.000Z",
+  "produced_at_utc": "2026-08-01T07:45:01.120Z",
+  "temperature_2m": 31.2,
+  "relative_humidity_2m": 74.0,
+  "pm2_5": 18.4,
+  "pm10": 27.1,
+  "carbon_monoxide": 211.0,
+  "nitrogen_dioxide": 14.2
+}
