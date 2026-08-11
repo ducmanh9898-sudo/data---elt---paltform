@@ -2,6 +2,7 @@ CREATE TABLE silver.sensor_readings_clean (
     schema_version STRING,
     event_type STRING,
     event_id STRING,
+    event_id PRIMARY KEY NOT ENFORCED,
 
     device_id STRING,
 
