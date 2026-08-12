@@ -1,5 +1,6 @@
 package com.environment.platform.streaming.validation;
-
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import com.environment.platform.streaming.model.SensorReading;
 
 public final class SensorReadingValidator {
@@ -40,6 +41,26 @@ public final class SensorReadingValidator {
                 "missing city_id"
             );
         }
+        if (reading.getEventTimeUtc() == null
+    || reading.getEventTimeUtc().isBlank()) {
+
+    return ValidationResult.invalid(
+        "missing event_time_utc"
+    );
+}
+
+try {
+
+    Instant.parse(
+        reading.getEventTimeUtc()
+    );
+
+} catch (DateTimeParseException exception) {
+
+    return ValidationResult.invalid(
+        "invalid event_time_utc"
+    );
+}
 
         if (reading.getTemperature2m() != null
             && (

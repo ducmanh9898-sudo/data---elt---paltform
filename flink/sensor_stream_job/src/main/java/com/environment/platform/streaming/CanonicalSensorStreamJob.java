@@ -17,6 +17,10 @@
     import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
     import org.apache.flink.connector.kafka.sink.KafkaSink;
     import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+    import java.time.Duration;
+    import java.time.Instant;
+
+    import org.apache.flink.api.common.eventtime.SerializableTimestampAssigner; 
     public final class CanonicalSensorStreamJob {
 
         private CanonicalSensorStreamJob() {
@@ -95,6 +99,37 @@
                     "Parse And Validate Sensor Events"
                 );
 
+        final DataStream<SensorReading> eventTimeSensorReadings =
+    validSensorReadings
+        .assignTimestampsAndWatermarks(
+            WatermarkStrategy
+                .<SensorReading>forBoundedOutOfOrderness(
+                    Duration.ofSeconds(10)
+                )
+                .withTimestampAssigner(
+                    new SerializableTimestampAssigner<SensorReading>() {
+
+                        private static final long serialVersionUID = 1L;
+
+                        @Override
+                        public long extractTimestamp(
+                            SensorReading reading,
+                            long recordTimestamp
+                        ) {
+
+                            return Instant
+                                .parse(
+                                    reading.getEventTimeUtc()
+                                )
+                                .toEpochMilli();
+                        }
+                    }
+                )
+        )
+        .name(
+            "Assign Sensor Event Time And Watermarks"
+        );
+
         final DataStream<DlqMessage> dlqEvents =
             validSensorReadings
                 .getSideOutput(
@@ -128,6 +163,20 @@ dlqEvents
     )
     .name(
         "Write Invalid Events To Kafka DLQ"
+    );
+    eventTimeSensorReadings
+    .map(
+        reading ->
+            "EVENT_TIME_STREAM event_id="
+                + reading.getEventId()
+                + " event_time_utc="
+                + reading.getEventTimeUtc()
+    )
+    .name(
+        "Debug Event Time Stream"
+    )
+    .print(
+        "EVENT_TIME"
     );
         
           env.execute(
