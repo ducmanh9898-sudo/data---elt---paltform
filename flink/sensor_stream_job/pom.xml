@@ -44,6 +44,20 @@
             <scope>provided</scope>
             
         </dependency>
+        
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-table-common</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+            <version>3.3.6</version>
+            <scope>provided</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.apache.flink</groupId>
@@ -59,6 +73,7 @@
     <groupId>org.apache.flink</groupId>
     <artifactId>flink-connector-kafka</artifactId>
     <version>${flink.kafka.connector.version}</version>
+    <scope>provided</scope>
 </dependency>
 
         <dependency>
