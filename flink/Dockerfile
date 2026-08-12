@@ -13,3 +13,6 @@ COPY ./lib/kafka-clients-3.4.0.jar /opt/flink/lib/
 RUN mkdir -p /opt/flink/plugins/s3-fs-hadoop \
     && cp /opt/flink/opt/flink-s3-fs-hadoop-*.jar \
           /opt/flink/plugins/s3-fs-hadoop/
+RUN wget -q \
+    https://repo1.maven.org/maven2/org/apache/flink/flink-connector-base/1.20.5/flink-connector-base-1.20.5.jar \
+    -O /opt/flink/lib/flink-connector-base-1.20.5.jar

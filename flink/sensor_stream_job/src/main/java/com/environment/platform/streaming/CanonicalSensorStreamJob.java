@@ -8,7 +8,15 @@
     import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
     import org.apache.flink.streaming.api.datastream.DataStream;
     import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+    import com.environment.platform.streaming.model.DlqMessage;
+    import com.environment.platform.streaming.model.SensorReading;
+    import com.environment.platform.streaming.process.ParseValidateSensorFunction;
+    import com.environment.platform.streaming.serialization.DlqMessageSerializer;
 
+    import org.apache.flink.connector.base.DeliveryGuarantee;
+    import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
+    import org.apache.flink.connector.kafka.sink.KafkaSink;
+    import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
     public final class CanonicalSensorStreamJob {
 
         private CanonicalSensorStreamJob() {
@@ -77,8 +85,53 @@
                 .name("Print Kafka Metadata")
                 .print("CANONICAL");
 
-            env.execute(
+          
+        final SingleOutputStreamOperator<SensorReading> validSensorReadings =
+            rawEvents
+                .process(
+                    new ParseValidateSensorFunction()
+                )
+                .name(
+                    "Parse And Validate Sensor Events"
+                );
+
+        final DataStream<DlqMessage> dlqEvents =
+            validSensorReadings
+                .getSideOutput(
+                    ParseValidateSensorFunction.DLQ_TAG
+        );
+        final KafkaSink<DlqMessage> dlqSink =
+    KafkaSink
+        .<DlqMessage>builder()
+        .setBootstrapServers(
+            "kafka:9092"
+        )
+        .setRecordSerializer(
+            KafkaRecordSerializationSchema
+                .builder()
+                .setTopic(
+                    "environment.sensor-readings.dlq"
+                )
+                .setValueSerializationSchema(
+                    new DlqMessageSerializer()
+                )
+                .build()
+        )
+        .setDeliveryGuarantee(
+            DeliveryGuarantee.AT_LEAST_ONCE
+        )
+        .build();
+
+dlqEvents
+    .sinkTo(
+        dlqSink
+    )
+    .name(
+        "Write Invalid Events To Kafka DLQ"
+    );
+        
+          env.execute(
                 "Canonical Sensor Stream Source "
             );
-        }
+    }
     }
