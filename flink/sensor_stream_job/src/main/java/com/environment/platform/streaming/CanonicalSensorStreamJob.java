@@ -12,7 +12,7 @@
     import com.environment.platform.streaming.model.SensorReading;
     import com.environment.platform.streaming.process.ParseValidateSensorFunction;
     import com.environment.platform.streaming.serialization.DlqMessageSerializer;
-
+    import com.environment.platform.streaming.sink.SilverIcebergSink;
     import org.apache.flink.connector.base.DeliveryGuarantee;
     import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
     import org.apache.flink.connector.kafka.sink.KafkaSink;
@@ -171,6 +171,9 @@
         .uid(
             "deduplicate-sensor-events-v1"
         );
+        SilverIcebergSink.attach(
+    deduplicatedSensorReadings
+);
         deduplicatedSensorReadings
     .map(
         reading ->

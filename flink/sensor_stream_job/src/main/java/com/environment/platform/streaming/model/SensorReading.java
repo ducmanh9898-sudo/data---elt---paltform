@@ -22,6 +22,16 @@ public class SensorReading {
     private Double pm25;
     private Double pm10;
     private String eventTimeUtc;
+
+    private String sourceSystem;
+    private String datasetName;
+
+    private Long sequenceNumber;
+
+    private String producedAtUtc;
+
+    private Double carbonMonoxide;
+    private Double nitrogenDioxide;
     public SensorReading() {
         // Required by Jackson
     }
@@ -142,5 +152,64 @@ public void setEventTimeUtc(
     final String eventTimeUtc
 ) {
     this.eventTimeUtc = eventTimeUtc;
+}
+public String getSourceSystem() {
+    return sourceSystem;
+}
+
+public void setSourceSystem(
+    final String sourceSystem
+) {
+    this.sourceSystem = sourceSystem;
+}
+
+public String getDatasetName() {
+    return datasetName;
+}
+
+public void setDatasetName(
+    final String datasetName
+) {
+    this.datasetName = datasetName;
+}
+
+public Long getSequenceNumber() {
+    return sequenceNumber;
+}
+
+public void setSequenceNumber(
+    final Long sequenceNumber
+) {
+    this.sequenceNumber = sequenceNumber;
+}
+
+public String getProducedAtUtc() {
+    return producedAtUtc;
+}
+
+public void setProducedAtUtc(
+    final String producedAtUtc
+) {
+    this.producedAtUtc = producedAtUtc;
+}
+
+public Double getCarbonMonoxide() {
+    return carbonMonoxide;
+}
+
+public void setCarbonMonoxide(
+    final Double carbonMonoxide
+) {
+    this.carbonMonoxide = carbonMonoxide;
+}
+
+public Double getNitrogenDioxide() {
+    return nitrogenDioxide;
+}
+
+public void setNitrogenDioxide(
+    final Double nitrogenDioxide
+) {
+    this.nitrogenDioxide = nitrogenDioxide;
 }
 }
