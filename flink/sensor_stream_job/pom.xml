@@ -31,7 +31,7 @@
         </flink.kafka.connector.version>
 
         <main.class>
-            com.environment.platform.streaming.KafkaValidationJob
+            com.environment.platform.streaming.CanonicalSensorStreamJob
         </main.class>
     </properties>
 
