@@ -2,7 +2,13 @@
     import com.environment.platform.streaming.sink.BronzeIcebergSink;
     import com.environment.platform.streaming.model.RawKafkaEvent;
     import com.environment.platform.streaming.serialization.RawKafkaEventDeserializationSchema;
-
+    import com.environment.platform.streaming.model.AirQuality5MinAggregate;
+    import com.environment.platform.streaming.process.AirQualityAggregateFunction;
+    import com.environment.platform.streaming.process.AirQualityWindowProcessFunction;
+    import com.environment.platform.streaming.sink.AirQuality5MinIcebergSink;
+    import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+    import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
+    import org.apache.flink.streaming.api.windowing.time.Time;
     import org.apache.flink.api.common.eventtime.WatermarkStrategy;
     import org.apache.flink.connector.kafka.source.KafkaSource;
     import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
@@ -106,6 +112,9 @@
                 .<SensorReading>forBoundedOutOfOrderness(
                     Duration.ofSeconds(10)
                 )
+                .withIdleness(
+    Duration.ofSeconds(30)
+)
                 .withTimestampAssigner(
                     new SerializableTimestampAssigner<SensorReading>() {
 
@@ -174,6 +183,31 @@
         SilverIcebergSink.attach(
     deduplicatedSensorReadings
 );
+final SingleOutputStreamOperator<AirQuality5MinAggregate>
+    airQuality5MinAggregates =
+        deduplicatedSensorReadings
+            .keyBy(
+                SensorReading::getCityId
+            )
+            .window(
+                TumblingEventTimeWindows.of(
+                    Time.minutes(5)
+                )
+            )
+            .aggregate(
+                new AirQualityAggregateFunction(),
+                new AirQualityWindowProcessFunction()
+            )
+            .name(
+                "Aggregate Air Quality In 5 Minute Event Time Windows"
+            )
+            .uid(
+                "air-quality-5min-window-v1"
+            );
+            AirQuality5MinIcebergSink.attach(
+    airQuality5MinAggregates
+);
+
         deduplicatedSensorReadings
     .map(
         reading ->
@@ -209,6 +243,29 @@ dlqEvents
     )
     .print(
         "EVENT_TIME"
+    );
+    airQuality5MinAggregates
+    .map(
+        aggregate ->
+            "AGG5M_STREAM"
+                + " city_id="
+                + aggregate.getCityId()
+                + " window_start="
+                + aggregate.getWindowStartEpochMillis()
+                + " window_end="
+                + aggregate.getWindowEndEpochMillis()
+                + " count="
+                + aggregate.getReadingCount()
+                + " avg_pm2_5="
+                + aggregate.getAvgPm25()
+                + " avg_pm10="
+                + aggregate.getAvgPm10()
+    )
+    .name(
+        "Debug 5 Minute Air Quality Aggregate"
+    )
+    .print(
+        "AGG5M"
     );
         
           env.execute(
