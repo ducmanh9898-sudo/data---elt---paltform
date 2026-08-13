@@ -25,15 +25,14 @@ airflow/logs/
 
 # Data
 data/raw/
-data/clean/
-data/warehouse/
+
 *.parquet
 
 # Docker / MinIO runtime
 docker-data/
 
 # Databases
-*.duckdb
+
 *.db
 *.sqlite
 

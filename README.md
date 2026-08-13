@@ -251,7 +251,6 @@ environment-data-platform/
 ├── src/                    # Shared Python configuration and storage modules
 ├── streaming/              # Event contracts and IoT simulator
 ├── trino/                  # Iceberg REST catalog configuration
-├── warehouse/              # Earlier relational warehouse models
 └── docker-compose.yml      # Local platform topology
 ```
 
