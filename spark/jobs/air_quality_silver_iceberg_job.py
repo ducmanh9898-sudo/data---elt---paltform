@@ -167,30 +167,37 @@ def build_silver_data(
             )
         )
     )
-    
+
     canonical_historical_df = (
         canonicalize_city_ids(
             valid_historical_df
         )
-    )       
+    )
 
     latest_record_window = (
-        Window
-        .partitionBy(
-            "city_id",
-             "city_name",
-            "measured_at_utc",
-            "source_system",
-            "dataset_name",
-        )
-        .orderBy(
-            col("crawled_at_utc")
-            .desc_nulls_last(),
-
-            col("source_file")
-            .desc_nulls_last(),
-        )
+    Window
+    .partitionBy(
+        "city_id",
+        "measured_at_utc",
+        "source_system",
+        "dataset_name",
     )
+    .orderBy(
+        col("crawled_at_utc")
+        .desc_nulls_last(),
+
+        col("source_file")
+        .desc_nulls_last(),
+    )
+
+    .orderBy(
+        col("crawled_at_utc")
+        .desc_nulls_last(),
+
+        col("source_file")
+        .desc_nulls_last(),
+    )
+)
 
     return (
         canonical_historical_df
@@ -282,7 +289,7 @@ def validate_silver_data(
         silver_df
         .groupBy(
             "city_id",
-             "city_name",
+
             "measured_at_utc",
             "source_system",
             "dataset_name",

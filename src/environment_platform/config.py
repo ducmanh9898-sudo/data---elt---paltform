@@ -71,10 +71,6 @@ class Settings:
     minio_secure: bool
     minio_bucket: str
 
-    kafka_bootstrap_servers: str
-    kafka_raw_topic: str
-    kafka_dlq_topic: str
-    kafka_late_topic: str
 
     open_meteo_air_quality_url: str
     open_meteo_weather_url: str
@@ -142,18 +138,6 @@ def get_settings() -> Settings:
         ),
         minio_bucket=require_env(
             "MINIO_BUCKET"
-        ),
-        kafka_bootstrap_servers=require_env(
-            "KAFKA_BOOTSTRAP_SERVERS"
-        ),
-        kafka_raw_topic=require_env(
-            "KAFKA_RAW_TOPIC"
-        ),
-        kafka_dlq_topic=require_env(
-            "KAFKA_DLQ_TOPIC"
-        ),
-        kafka_late_topic=require_env(
-            "KAFKA_LATE_TOPIC"
         ),
 
         open_meteo_air_quality_url=os.getenv(

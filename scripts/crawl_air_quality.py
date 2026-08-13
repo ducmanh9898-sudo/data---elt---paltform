@@ -6,7 +6,8 @@ from typing import Any
 from environment_platform.config import get_settings
 import psycopg
 import requests
-
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from uuid import uuid4
 
 from minio import Minio
@@ -39,7 +40,15 @@ FORECAST_DAYS = (
 REQUEST_TIMEOUT_SECONDS = (
     settings.air_quality_timeout_seconds
 )
-
+AIR_QUALITY_VARIABLES = [
+    "pm10",
+    "pm2_5",
+    "carbon_monoxide",
+    "nitrogen_dioxide",
+    "sulphur_dioxide",
+    "ozone",
+    "us_aqi",
+]
 
 def get_cities() -> list[dict[str, Any]]:
     with psycopg.connect(
@@ -83,39 +92,112 @@ def get_cities() -> list[dict[str, Any]]:
 
     return cities
 
-    with psycopg.connect(
-        **settings.postgres_config
-    ) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT
-                    c.city_id,
-                    c.city_name,
-                    co.country_code,
-                    co.country_name,
-                    c.latitude,
-                    c.longitude
-                FROM cities AS c
-                JOIN countries AS co
-                    ON c.country_id = co.country_id
-                ORDER BY
-                    co.country_code,
-                    c.city_name;
-            """)
+def create_http_session() -> requests.Session:
+    retry_policy = Retry(
+        total=4,
+        connect=4,
+        read=4,
+        status=4,
+        backoff_factor=1,
+        status_forcelist=[
+            429,
+            500,
+            502,
+            503,
+            504,
+        ],
+        allowed_methods=frozenset(
+            ["GET"]
+        ),
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
 
-            rows = cursor.fetchall()
+    adapter = HTTPAdapter(
+        max_retries=retry_policy
+    )
 
-    return [
+    session = requests.Session()
+
+    session.mount(
+        "https://",
+        adapter,
+    )
+
+    session.mount(
+        "http://",
+        adapter,
+    )
+
+    session.headers.update(
         {
-            "city_id": row[0],
-            "city_name": row[1],
-            "country_code": row[2],
-            "country_name": row[3],
-            "latitude": float(row[4]),
-            "longitude": float(row[5]),
+            "User-Agent": (
+                "environment-data-platform/"
+                "1.0-air-quality-crawler"
+            )
         }
-        for row in rows
-    ]
+    )
+
+    return session
+
+
+def validate_air_quality_payload(
+    city: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    hourly = payload.get("hourly")
+
+    if not isinstance(hourly, dict):
+        raise ValueError(
+            "Missing hourly object for "
+            f"{city['city_name']}"
+        )
+
+    hourly_times = hourly.get("time")
+
+    if not isinstance(
+        hourly_times,
+        list,
+    ):
+        raise ValueError(
+            "Missing hourly.time array for "
+            f"{city['city_name']}"
+        )
+
+    if not hourly_times:
+        raise ValueError(
+            "Empty hourly.time array for "
+            f"{city['city_name']}"
+        )
+
+    expected_length = len(
+        hourly_times
+    )
+
+    for variable in AIR_QUALITY_VARIABLES:
+        values = hourly.get(
+            variable
+        )
+
+        if not isinstance(
+            values,
+            list,
+        ):
+            raise ValueError(
+                "Missing or invalid "
+                f"{variable} array for "
+                f"{city['city_name']}"
+            )
+
+        if len(values) != expected_length:
+            raise ValueError(
+                "Air-quality array length mismatch: "
+                f"city={city['city_name']}, "
+                f"variable={variable}, "
+                f"expected={expected_length}, "
+                f"actual={len(values)}"
+            )
+
 def crawl_air_quality(
     session: requests.Session,
     city: dict[str, Any],
@@ -134,15 +216,10 @@ def crawl_air_quality(
     params = {
         "latitude": city["latitude"],
         "longitude": city["longitude"],
-        "hourly": ",".join([
-            "pm10",
-            "pm2_5",
-            "carbon_monoxide",
-            "nitrogen_dioxide",
-            "sulphur_dioxide",
-            "ozone",
-            "us_aqi",
-        ]),
+        "hourly": ",".join(
+    AIR_QUALITY_VARIABLES
+)
+        ,
         "timezone": "auto",
         "past_days": PAST_DAYS,
         "forecast_days": FORECAST_DAYS,
@@ -157,7 +234,10 @@ def crawl_air_quality(
     response.raise_for_status()
 
     payload = response.json()
-
+    validate_air_quality_payload(
+    city=city,
+    payload=payload,
+)
     # Kiểm tra response có cấu trúc tối thiểu cần thiết.
     hourly = payload.get("hourly")
 
@@ -182,7 +262,7 @@ def crawl_air_quality(
 
 
 
-   
+
 def build_raw_payload(
     city: dict[str, Any],
     api_data: dict[str, Any],
@@ -293,13 +373,7 @@ def main() -> None:
     failed_crawls = 0
 
     # Session tái sử dụng HTTP connection giữa các request.
-    with requests.Session() as session:
-        session.headers.update({
-            "User-Agent": (
-                "environment-data-platform/1.0"
-            ),
-        })
-
+    with create_http_session() as session:
         for city in cities:
             print(
                 "\nCrawling air quality: "

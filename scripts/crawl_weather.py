@@ -194,14 +194,17 @@ def validate_weather_payload(
     payload: dict[str, Any],
 ) -> None:
     """
-    Kiểm tra cấu trúc JSON trả về từ API.
+    Validate the minimum hourly weather response contract.
+
+    Every requested hourly metric must exist as a list and
+    must have exactly the same number of elements as hourly.time.
     """
 
     hourly = payload.get("hourly")
 
     if not isinstance(hourly, dict):
         raise ValueError(
-            f"Missing hourly object for "
+            "Missing hourly object for "
             f"{city['city_name']}"
         )
 
@@ -212,61 +215,42 @@ def validate_weather_payload(
         list,
     ):
         raise ValueError(
-            f"Missing hourly.time array for "
+            "Missing hourly.time array for "
             f"{city['city_name']}"
         )
 
     if not hourly_times:
         raise ValueError(
-            f"Empty hourly.time array for "
+            "Empty hourly.time array for "
             f"{city['city_name']}"
-        )
-
-    missing_variables = [
-        variable
-        for variable in HOURLY_WEATHER_VARIABLES
-        if variable not in hourly
-    ]
-
-    if missing_variables:
-        raise ValueError(
-            f"Missing weather variables for "
-            f"{city['city_name']}: "
-            f"{missing_variables}"
         )
 
     expected_length = len(
         hourly_times
     )
 
-    different_length_variables = []
-
     for variable in HOURLY_WEATHER_VARIABLES:
-        values = hourly.get(variable)
-
-        if (
-            isinstance(values, list)
-            and len(values) != expected_length
-        ):
-            different_length_variables.append(
-                {
-                    "variable": variable,
-                    "expected": expected_length,
-                    "actual": len(values),
-                }
-            )
-
-    if different_length_variables:
-        print(
-            "  Warning: weather arrays have "
-            "different lengths:"
+        values = hourly.get(
+            variable
         )
 
-        for item in different_length_variables:
-            print(
-                f"  - {item['variable']}: "
-                f"expected={item['expected']}, "
-                f"actual={item['actual']}"
+        if not isinstance(
+            values,
+            list,
+        ):
+            raise ValueError(
+                "Missing or invalid weather array: "
+                f"city={city['city_name']}, "
+                f"variable={variable}"
+            )
+
+        if len(values) != expected_length:
+            raise ValueError(
+                "Weather array length mismatch: "
+                f"city={city['city_name']}, "
+                f"variable={variable}, "
+                f"expected={expected_length}, "
+                f"actual={len(values)}"
             )
 
     print(
@@ -274,7 +258,34 @@ def validate_weather_payload(
         f"{expected_length}"
     )
 
+    for variable in HOURLY_WEATHER_VARIABLES:
+        values = hourly.get(
+            variable
+        )
 
+        if not isinstance(
+            values,
+            list,
+        ):
+            raise ValueError(
+                "Missing or invalid weather array: "
+                f"city={city['city_name']}, "
+                f"variable={variable}"
+            )
+
+        if len(values) != expected_length:
+            raise ValueError(
+                "Weather array length mismatch: "
+                f"city={city['city_name']}, "
+                f"variable={variable}, "
+                f"expected={expected_length}, "
+                f"actual={len(values)}"
+            )
+
+    print(
+        f"  API hourly records: "
+        f"{expected_length}"
+    )
 def crawl_weather(
     session: requests.Session,
     city: dict[str, Any],
@@ -419,7 +430,7 @@ def upload_weather_raw(
     return object_name
 
 def main() -> None:
-   
+
 
     run_id = uuid4().hex
 

@@ -45,4 +45,79 @@ models:
               arguments:
                 min_value: 0
                 max_value: 1200
+
+  - name: stg_weather_hourly
+    description: >
+      Staging view containing normalized hourly weather
+      measurements from the Silver Iceberg table.
+
+    columns:
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: measured_at_utc
+        data_tests:
+          - not_null
+
+      - name: source_system
+        data_tests:
+          - not_null
+
+      - name: dataset_name
+        data_tests:
+          - not_null
+
+      - name: record_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - historical
+
+      - name: relative_humidity_2m
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: precipitation
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: rain
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: cloud_cover
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: wind_speed_10m
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: wind_direction_10m
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 360
+
+      - name: visibility
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
  

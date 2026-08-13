@@ -59,7 +59,7 @@ with DAG(
         1,
         tz="UTC",
     ),
-    schedule=None,
+    schedule="@hourly",
     catchup=False,
     max_active_runs=1,
     default_args=default_args,
@@ -83,7 +83,7 @@ with DAG(
             "/opt/airflow/scripts/crawl_air_quality.py"
         ),
         cwd=PROJECT_DIR,
-        
+
         execution_timeout=timedelta(minutes=15),
     )
 
@@ -95,7 +95,7 @@ with DAG(
             "/opt/airflow/scripts/crawl_weather.py"
         ),
         cwd=PROJECT_DIR,
-        
+
 
         execution_timeout=timedelta(minutes=15),
     )
@@ -147,7 +147,17 @@ with DAG(
     # ========================================================
     # 4. DBT INTERMEDIATE / GOLD
     # ========================================================
-
+    dbt_source_freshness = BashOperator(
+        task_id="dbt_source_freshness",
+        bash_command=(
+            "set -euo pipefail; "
+            f"dbt source freshness "
+            f"--project-dir {DBT_PROJECT_DIR} "
+            f"--profiles-dir {DBT_PROJECT_DIR}"
+        ),
+        cwd=DBT_PROJECT_DIR,
+        execution_timeout=timedelta(minutes=10),
+    )
     dbt_build = BashOperator(
         task_id="dbt_build",
         bash_command=(
@@ -229,6 +239,6 @@ with DAG(
     )
 
     [
-        build_air_quality_silver,
-        build_weather_silver,
-    ] >> dbt_build >> trino_smoke_check
+    build_air_quality_silver,
+    build_weather_silver,
+] >> dbt_source_freshness >> dbt_build >> trino_smoke_check
