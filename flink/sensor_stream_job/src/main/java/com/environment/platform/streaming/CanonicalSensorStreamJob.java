@@ -19,7 +19,7 @@
     import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
     import java.time.Duration;
     import java.time.Instant;
-
+    import com.environment.platform.streaming.process.DeduplicateSensorEventFunction;
     import org.apache.flink.api.common.eventtime.SerializableTimestampAssigner; 
     public final class CanonicalSensorStreamJob {
 
@@ -156,6 +156,35 @@
             DeliveryGuarantee.AT_LEAST_ONCE
         )
         .build();
+
+        final DataStream<SensorReading> deduplicatedSensorReadings =
+    eventTimeSensorReadings
+        .keyBy(
+            SensorReading::getEventId
+        )
+        .process(
+            new DeduplicateSensorEventFunction()
+        )
+        .name(
+            "Deduplicate Sensor Events By Event ID"
+        )
+        .uid(
+            "deduplicate-sensor-events-v1"
+        );
+        deduplicatedSensorReadings
+    .map(
+        reading ->
+            "DEDUP_STREAM event_id="
+                + reading.getEventId()
+                + " event_time_utc="
+                + reading.getEventTimeUtc()
+    )
+    .name(
+        "Debug Deduplicated Stream"
+    )
+    .print(
+        "DEDUP"
+    );
 
 dlqEvents
     .sinkTo(
