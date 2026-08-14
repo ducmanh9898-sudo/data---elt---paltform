@@ -144,6 +144,7 @@ services:
         execution.checkpointing.mode: EXACTLY_ONCE
         execution.checkpointing.storage: filesystem
         execution.checkpointing.dir: s3://environment-data/flink-checkpoints/
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
 
         s3.endpoint: http://minio:9000
         s3.access-key: minioadmin
@@ -195,6 +196,7 @@ services:
         execution.checkpointing.interval: 10s
         execution.checkpointing.storage: filesystem
         execution.checkpointing.dir: s3://environment-data/flink-checkpoints/
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
         
 
         s3.endpoint: http://minio:9000

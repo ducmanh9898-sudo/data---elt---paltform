@@ -28,7 +28,7 @@
     import com.environment.platform.streaming.process.DeduplicateSensorEventFunction;
     import org.apache.flink.api.common.eventtime.SerializableTimestampAssigner; 
     import com.environment.platform.streaming.sink.LateKafkaSink;
-
+    import org.apache.kafka.clients.consumer.OffsetResetStrategy;
     import org.apache.flink.util.OutputTag;
     public final class CanonicalSensorStreamJob {
 
@@ -63,8 +63,10 @@
                     "environment-canonical-v1"
                 )
                 .setStartingOffsets(
-                    OffsetsInitializer.latest()
-                )
+                    OffsetsInitializer.committedOffsets(
+                    OffsetResetStrategy.LATEST
+    )
+)
                 .setDeserializer(
                     new RawKafkaEventDeserializationSchema()
                 )
@@ -76,7 +78,10 @@
                 source,
                 WatermarkStrategy.noWatermarks(),
                 "Canonical Kafka Raw Source"
-            );
+            )
+             .uid(
+        "canonical-kafka-raw-source-v1"
+    );
 
 
         // =========================================================
