@@ -1,6 +1,81 @@
 version: 2
 
 models:
+  - name: int_sensor_environment_hourly
+    description: >
+      Hourly IoT sensor aggregates built directly from canonical
+      event-level Streaming Silver data.
+      One row represents one city at one UTC hour.
+
+    columns:
+      - name: city_hour_key
+        description: Unique key for one city and one UTC hour.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: measured_at_utc
+        data_tests:
+          - not_null
+
+      - name: city_name
+        data_tests:
+          - not_null
+
+      - name: country_code
+        data_tests:
+          - not_null
+
+      - name: sensor_event_count
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: sensor_device_count
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: sensor_avg_relative_humidity_2m
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: sensor_avg_pm2_5
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 800
+
+      - name: sensor_avg_pm10
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1200
+
+      - name: first_sensor_event_at
+        data_tests:
+          - not_null
+
+      - name: last_sensor_event_at
+        data_tests:
+          - not_null
+
+      - name: sensor_data_updated_at
+        data_tests:
+          - not_null
   - name: int_weather_air_quality_joined
     description: >
       Hourly weather and air-quality data joined by city and UTC timestamp.
@@ -101,3 +176,24 @@ models:
       - name: is_air_quality_alert
         data_tests:
           - not_null
+      - name: has_sensor_data
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                  - false
+                quote: false
+
+      - name: sensor_event_count
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: sensor_device_count
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 1

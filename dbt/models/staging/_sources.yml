@@ -3,7 +3,8 @@ version: 2
 sources:
   - name: silver
     description: >
-      Silver Iceberg tables created by Spark and queried through Trino.
+       Silver Iceberg tables produced by batch and streaming pipelines
+        and queried through Trino.
 
     database: iceberg
     schema: silver
@@ -27,3 +28,12 @@ sources:
       - name: weather_hourly
         description: >
           Clean hourly weather data produced by Spark.
+
+      - name: sensor_readings_clean
+        description: >
+          Canonical deduplicated IoT sensor events produced by Flink.
+
+        config:
+          # Streaming availability is managed separately from the
+          # hourly batch source-freshness gate.
+          freshness: null

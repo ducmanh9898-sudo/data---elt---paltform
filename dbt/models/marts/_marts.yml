@@ -56,6 +56,28 @@ models:
         data_tests:
           - not_null
 
+      - name: has_sensor_data
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                  - false
+                quote: false
+
+      - name: sensor_event_count
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: sensor_device_count
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 1
+
 
   - name: gold_city_environment_daily
     description: >

@@ -120,4 +120,96 @@ models:
           - accepted_range:
               arguments:
                 min_value: 0
+  - name: stg_sensor_readings
+    description: >
+      Canonical production IoT sensor events from Streaming Silver.
+      One row represents one unique sensor event.
+
+    columns:
+      - name: event_id
+        description: Globally unique identifier for one sensor event.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: device_id
+        data_tests:
+          - not_null
+
+      - name: sequence_number
+        data_tests:
+          - not_null
+
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: event_time_utc
+        data_tests:
+          - not_null
+
+      - name: processed_at
+        data_tests:
+          - not_null
+
+      - name: schema_version
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - "1.0"
+
+      - name: event_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - environment.sensor_reading
+
+      - name: source_system
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - iot_simulator
+
+      - name: dataset_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - sensor_readings
+
+      - name: quality_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - VALID
+
+      - name: relative_humidity_2m
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: pm2_5
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 800
+
+      - name: pm10
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1200
  
