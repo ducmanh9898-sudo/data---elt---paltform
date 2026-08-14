@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from trino.dbapi import connect
-
+import plotly.express as px
 # -------------------------------------------------------------------
 # Page configuration
 # -------------------------------------------------------------------
@@ -21,7 +21,7 @@ st.set_page_config(
 # -------------------------------------------------------------------
 
 APP_DIR = Path(__file__).resolve().parent
-DATA_PATH = APP_DIR / "data" / "gold_city_environment_hourly.csv"
+DATA_PATH = APP_DIR / "data" / "batch_environment_hourly.csv"
 
 # -------------------------------------------------------------------
 # Realtime serving configuration
@@ -418,10 +418,7 @@ def load_analytics_data() -> pd.DataFrame:
 
     timestamp_columns = [
         "measured_at_utc",
-        "first_sensor_event_at",
-        "last_sensor_event_at",
-        "sensor_data_updated_at",
-        "data_updated_at_utc",
+        "measured_at_local",
     ]
 
     for column in timestamp_columns:
@@ -433,23 +430,44 @@ def load_analytics_data() -> pd.DataFrame:
             )
 
     numeric_columns = [
-        "city_id",
-        "pm2_5",
-        "pm10",
-        "temperature_2m",
-        "relative_humidity_2m",
-        "sensor_event_count",
-        "sensor_device_count",
-        "sensor_avg_pm2_5",
-        "sensor_avg_pm10",
-        "sensor_avg_temperature_2m",
-        "sensor_avg_relative_humidity_2m",
-        "pm2_5_sensor_minus_batch",
-        "pm10_sensor_minus_batch",
-        "temperature_2m_sensor_minus_batch",
-        "relative_humidity_2m_sensor_minus_batch",
+    "city_id",
+    "latitude",
+    "longitude",
+
+    "pm2_5",
+    "pm10",
+    "carbon_monoxide",
+    "nitrogen_dioxide",
+    "sulphur_dioxide",
+    "ozone",
+    "us_aqi",
+    "air_quality_status_rank",
+
+    "temperature_2m",
+    "relative_humidity_2m",
+    "precipitation",
+    "rain",
+    "surface_pressure",
+    "cloud_cover",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    "visibility",
+    "weather_code",
+]
+    boolean_columns = [
+        "is_air_quality_alert",
+        "has_precipitation",
     ]
 
+    for column in boolean_columns:
+        if column in df.columns:
+            df[column] = (
+                df[column]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .eq("true")
+            )
     for column in numeric_columns:
         if column in df.columns:
             df[column] = pd.to_numeric(
@@ -505,7 +523,30 @@ def query_realtime_view(
 
     finally:
         connection.close()
+def compact_figure(
+    fig,
+    height: int = 280,
+    show_legend: bool = True,
+):
+    fig.update_layout(
+        height=height,
+        margin=dict(
+            l=15,
+            r=15,
+            t=15,
+            b=15,
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+        ),
+        showlegend=show_legend,
+    )
 
+    return fig
 # -------------------------------------------------------------------
 # Header
 # -------------------------------------------------------------------
@@ -565,15 +606,16 @@ analytics_tab, realtime_tab = st.tabs(
 
 with analytics_tab:
 
-    st.subheader("Integrated Environmental Analytics")
+    st.subheader("Environmental Analytics")
 
     st.caption(
-        "Curated snapshot generated from the Gold lakehouse serving layer."
+        "Historical environmental analytics from the "
+        "batch Gold lakehouse serving layer."
     )
 
-    # ---------------------------------------------------------------
-    # Snapshot period
-    # ---------------------------------------------------------------
+    # ===============================================================
+    # FILTER PREPARATION
+    # ===============================================================
 
     analytics_df["analytics_date"] = (
         analytics_df["measured_at_utc"].dt.date
@@ -582,452 +624,857 @@ with analytics_tab:
     min_date = analytics_df["analytics_date"].min()
     max_date = analytics_df["analytics_date"].max()
 
-    st.caption(
-        f"Snapshot period: {min_date} → {max_date}"
-    )
-
-    # ---------------------------------------------------------------
-    # Filters
-    # ---------------------------------------------------------------
-
-    st.markdown("#### Filters")
-
     filter_1, filter_2, filter_3 = st.columns(
-        [1, 2, 2]
+        [1.4, 1.6, 2]
     )
 
-    country_options = sorted(
-        analytics_df["country_code"]
-        .dropna()
-        .unique()
-        .tolist()
+    country_lookup = (
+        analytics_df[
+            [
+                "country_code",
+                "country_name",
+            ]
+        ]
+        .drop_duplicates()
+        .sort_values("country_name")
     )
 
-    city_options = sorted(
-        analytics_df["city_name"]
+    country_names = (
+        country_lookup[
+            "country_name"
+        ]
         .dropna()
-        .unique()
         .tolist()
     )
 
     with filter_1:
-        selected_countries = st.multiselect(
+
+        selected_country = st.selectbox(
             "Country",
-            options=country_options,
-            default=country_options,
+            [
+                "All Countries",
+                *country_names,
+            ],
         )
 
+    if selected_country == "All Countries":
+
+        country_df = analytics_df.copy()
+
+    else:
+
+        country_df = analytics_df[
+            analytics_df["country_name"]
+            == selected_country
+        ].copy()
+
+    city_names = sorted(
+        country_df[
+            "city_name"
+        ]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
     with filter_2:
-        selected_cities = st.multiselect(
+
+        selected_city = st.selectbox(
             "City",
-            options=city_options,
-            default=city_options,
+            [
+                "All Cities",
+                *city_names,
+            ],
         )
 
     with filter_3:
+
         selected_dates = st.date_input(
             "Date range",
-            value=(min_date, max_date),
+            value=(
+                min_date,
+                max_date,
+            ),
             min_value=min_date,
             max_value=max_date,
         )
 
     if (
-        isinstance(selected_dates, (tuple, list))
+        isinstance(
+            selected_dates,
+            (tuple, list),
+        )
         and len(selected_dates) == 2
     ):
-        start_date, end_date = selected_dates
+        start_date, end_date = (
+            selected_dates
+        )
+
     else:
         start_date = min_date
         end_date = max_date
 
-    filtered_df = analytics_df[
-        analytics_df["country_code"].isin(
-            selected_countries
-        )
-        & analytics_df["city_name"].isin(
-            selected_cities
-        )
-        & (
-            analytics_df["analytics_date"]
+    filtered_df = country_df[
+        (
+            country_df[
+                "analytics_date"
+            ]
             >= start_date
         )
         & (
-            analytics_df["analytics_date"]
+            country_df[
+                "analytics_date"
+            ]
             <= end_date
         )
     ].copy()
 
+    if selected_city != "All Cities":
+
+        filtered_df = filtered_df[
+            filtered_df["city_name"]
+            == selected_city
+        ].copy()
+
     if filtered_df.empty:
 
         st.warning(
-            "No analytics data matches the selected filters."
+            "No environmental observations "
+            "match the selected filters."
         )
+
+        st.stop()
+
+    # Critical for Plotly time-series
+    filtered_df = filtered_df.sort_values(
+        "measured_at_utc"
+    )
+
+    # ===============================================================
+    # SCOPE
+    # ===============================================================
+
+    if selected_city != "All Cities":
+
+        scope_name = selected_city
+
+    elif selected_country != "All Countries":
+
+        scope_name = selected_country
 
     else:
 
-        # -----------------------------------------------------------
-        # KPI cards
-        # -----------------------------------------------------------
+        scope_name = "All Supported Locations"
 
-        total_city_hours = len(filtered_df)
+    st.markdown(
+        f"### {scope_name}"
+    )
 
-        total_cities = filtered_df[
-            "city_id"
-        ].nunique()
+    st.caption(
+        f"{start_date} → {end_date} · "
+        f"{filtered_df['city_name'].nunique()} cities · "
+        f"{len(filtered_df):,} city-hour observations"
+    )
 
-        integrated_sensor_hours = int(
-            filtered_df[
-                "has_sensor_data"
-            ].sum()
+    # ===============================================================
+    # LATEST SNAPSHOT
+    # ===============================================================
+
+    latest_timestamp = filtered_df[
+        "measured_at_utc"
+    ].max()
+
+    latest_df = filtered_df[
+        filtered_df["measured_at_utc"]
+        == latest_timestamp
+    ].copy()
+
+    def latest_average(
+        column: str,
+    ) -> float:
+        return latest_df[
+            column
+        ].mean()
+
+    # ===============================================================
+    # MAIN KPI CARDS
+    # ===============================================================
+
+    st.markdown(
+        "#### Current Environmental Snapshot"
+    )
+
+    metric_1, metric_2, metric_3, metric_4, metric_5 = (
+        st.columns(5)
+    )
+
+    metric_1.metric(
+        "US AQI",
+        f"{latest_average('us_aqi'):.0f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['us_aqi'].mean():.0f}"
+        ),
+        delta_color="off",
+    )
+
+    metric_2.metric(
+        "PM2.5",
+        f"{latest_average('pm2_5'):.1f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['pm2_5'].mean():.1f}"
+        ),
+        delta_color="off",
+    )
+
+    metric_3.metric(
+        "PM10",
+        f"{latest_average('pm10'):.1f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['pm10'].mean():.1f}"
+        ),
+        delta_color="off",
+    )
+
+    metric_4.metric(
+        "Temperature",
+        f"{latest_average('temperature_2m'):.1f} °C",
+        delta=(
+            f"Avg "
+            f"{filtered_df['temperature_2m'].mean():.1f} °C"
+        ),
+        delta_color="off",
+    )
+
+    metric_5.metric(
+        "Humidity",
+        f"{latest_average('relative_humidity_2m'):.0f}%",
+        delta=(
+            f"Avg "
+            f"{filtered_df['relative_humidity_2m'].mean():.0f}%"
+        ),
+        delta_color="off",
+    )
+
+    st.caption(
+        "Latest snapshot: "
+        f"{latest_timestamp}"
+    )
+
+    st.divider()
+
+    # ===============================================================
+    # AIR QUALITY
+    # ===============================================================
+
+    st.header("Air Quality")
+
+    st.caption(
+        "Particulate matter, gaseous pollutants, "
+        "AQI status and temporal behaviour."
+    )
+
+    # ---------------------------------------------------------------
+    # PM2.5 / PM10 time-series
+    # ---------------------------------------------------------------
+
+    air_hourly = (
+        filtered_df
+        .groupby(
+            "measured_at_utc",
+            as_index=False,
         )
-
-        integrated_sensor_events = int(
-            filtered_df[
-                "sensor_event_count"
-            ]
-            .fillna(0)
-            .sum()
-        )
-
-        sensor_coverage_pct = (
-            integrated_sensor_hours
-            / total_city_hours
-            * 100
-        )
-
-        st.markdown("#### Platform Snapshot")
-
-        kpi_1, kpi_2, kpi_3, kpi_4 = st.columns(4)
-
-        kpi_1.metric(
-            "Cities",
-            f"{total_cities:,}",
-        )
-
-        kpi_2.metric(
-            "City-Hours",
-            f"{total_city_hours:,}",
-        )
-
-        kpi_3.metric(
-            "Integrated Sensor Hours",
-            f"{integrated_sensor_hours:,}",
-            help=(
-                "Batch-backed Gold city-hours that also "
-                "contain IoT sensor observations."
+        .agg(
+            PM2_5=(
+                "pm2_5",
+                "mean",
+            ),
+            PM10=(
+                "pm10",
+                "mean",
+            ),
+            US_AQI=(
+                "us_aqi",
+                "mean",
             ),
         )
-
-        kpi_4.metric(
-            "Sensor Events",
-            f"{integrated_sensor_events:,}",
-            help=(
-                "Sensor events represented inside the "
-                "selected integrated Gold city-hours."
-            ),
+        .sort_values(
+            "measured_at_utc"
         )
+    )
 
-        st.caption(
-            "Sensor coverage in current selection: "
-            f"{sensor_coverage_pct:.2f}%"
-        )
+    st.markdown(
+        "#### PM2.5 & PM10 Over Time"
+    )
 
-        st.divider()
+    pm_fig = px.line(
+        air_hourly,
+        x="measured_at_utc",
+        y=[
+            "PM2_5",
+            "PM10",
+        ],
+        labels={
+            "measured_at_utc":
+                "Time",
+            "value":
+                "Concentration",
+            "variable":
+                "Metric",
+        },
+    )
 
-        # -----------------------------------------------------------
-        # PM2.5 Batch vs Sensor time series
-        # -----------------------------------------------------------
+    pm_fig = compact_figure(
+        pm_fig,
+        height=320,
+    )
+
+    st.plotly_chart(
+        pm_fig,
+        use_container_width=True,
+    )
+
+    # ---------------------------------------------------------------
+    # AQI + status
+    # ---------------------------------------------------------------
+
+    air_left, air_right = st.columns(2)
+
+    with air_left:
 
         st.markdown(
-            "#### PM2.5 — Batch vs IoT Sensor"
+            "#### US AQI Over Time"
         )
 
-        st.caption(
-            "Hourly average across the currently selected cities. "
-            "Sensor values appear only where streaming observations "
-            "overlap the batch-backed Gold grain."
+        aqi_fig = px.line(
+            air_hourly,
+            x="measured_at_utc",
+            y="US_AQI",
+            labels={
+                "measured_at_utc":
+                    "Time",
+                "US_AQI":
+                    "US AQI",
+            },
         )
 
-        pm25_timeseries = (
+        aqi_fig = compact_figure(
+            aqi_fig,
+            height=280,
+            show_legend=False,
+        )
+
+        st.plotly_chart(
+            aqi_fig,
+            use_container_width=True,
+        )
+
+    with air_right:
+
+        st.markdown(
+            "#### AQ Status Distribution"
+        )
+
+        status_counts = (
+            filtered_df[
+                "air_quality_status"
+            ]
+            .fillna("unknown")
+            .value_counts()
+            .rename_axis(
+                "Status"
+            )
+            .reset_index(
+                name="Hours"
+            )
+        )
+
+        status_fig = px.pie(
+            status_counts,
+            names="Status",
+            values="Hours",
+            hole=0.48,
+        )
+
+        status_fig = compact_figure(
+            status_fig,
+            height=280,
+        )
+
+        st.plotly_chart(
+            status_fig,
+            use_container_width=True,
+        )
+
+    # ---------------------------------------------------------------
+    # Gaseous pollutant cards
+    # ---------------------------------------------------------------
+
+    st.markdown(
+        "#### Latest Gaseous Pollutants"
+    )
+
+    gas_1, gas_2, gas_3, gas_4 = (
+        st.columns(4)
+    )
+
+    gas_1.metric(
+        "Carbon Monoxide",
+        f"{latest_average('carbon_monoxide'):.1f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['carbon_monoxide'].mean():.1f}"
+        ),
+        delta_color="off",
+    )
+
+    gas_2.metric(
+        "Nitrogen Dioxide",
+        f"{latest_average('nitrogen_dioxide'):.1f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['nitrogen_dioxide'].mean():.1f}"
+        ),
+        delta_color="off",
+    )
+
+    gas_3.metric(
+        "Sulphur Dioxide",
+        f"{latest_average('sulphur_dioxide'):.1f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['sulphur_dioxide'].mean():.1f}"
+        ),
+        delta_color="off",
+    )
+
+    gas_4.metric(
+        "Ozone",
+        f"{latest_average('ozone'):.1f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['ozone'].mean():.1f}"
+        ),
+        delta_color="off",
+    )
+
+    # ---------------------------------------------------------------
+    # City comparison only when useful
+    # ---------------------------------------------------------------
+
+    if (
+        filtered_df[
+            "city_name"
+        ].nunique()
+        > 1
+    ):
+
+        st.markdown(
+            "#### PM2.5 Comparison by City"
+        )
+
+        city_pm25 = (
             filtered_df
             .groupby(
-                "measured_at_utc",
+                "city_name",
                 as_index=False,
             )
             .agg(
-                batch_pm2_5=(
+                Average_PM2_5=(
                     "pm2_5",
                     "mean",
-                ),
-                sensor_pm2_5=(
-                    "sensor_avg_pm2_5",
-                    "mean",
-                ),
+                )
             )
             .sort_values(
-                "measured_at_utc"
+                "Average_PM2_5",
+                ascending=True,
             )
         )
 
-        pm25_timeseries = (
-            pm25_timeseries
-            .set_index(
-                "measured_at_utc"
-            )
-            .rename(
-                columns={
-                    "batch_pm2_5":
-                        "Batch PM2.5",
-                    "sensor_pm2_5":
-                        "IoT Sensor PM2.5",
-                }
-            )
+        city_pm25_fig = px.bar(
+            city_pm25,
+            x="Average_PM2_5",
+            y="city_name",
+            orientation="h",
+            labels={
+                "Average_PM2_5":
+                    "Average PM2.5",
+                "city_name":
+                    "City",
+            },
         )
 
-        st.line_chart(
-            pm25_timeseries,
-            height=380,
+        city_pm25_fig = compact_figure(
+            city_pm25_fig,
+            height=300,
+            show_legend=False,
         )
 
-        st.divider()
+        st.plotly_chart(
+            city_pm25_fig,
+            use_container_width=True,
+        )
 
-        # -----------------------------------------------------------
-        # Coverage + difference charts
-        # -----------------------------------------------------------
+    st.divider()
 
-        chart_left, chart_right = st.columns(2)
+    # ===============================================================
+    # WEATHER
+    # ===============================================================
 
-        with chart_left:
+    st.header("Weather")
 
-            st.markdown(
-                "#### Sensor Coverage by City"
-            )
+    weather_hourly = (
+        filtered_df
+        .groupby(
+            "measured_at_utc",
+            as_index=False,
+        )
+        .agg(
+            Temperature=(
+                "temperature_2m",
+                "mean",
+            ),
+            Humidity=(
+                "relative_humidity_2m",
+                "mean",
+            ),
+            Precipitation=(
+                "precipitation",
+                "mean",
+            ),
+            Rain=(
+                "rain",
+                "mean",
+            ),
+            Pressure=(
+                "surface_pressure",
+                "mean",
+            ),
+            Cloud_Cover=(
+                "cloud_cover",
+                "mean",
+            ),
+            Wind_Speed=(
+                "wind_speed_10m",
+                "mean",
+            ),
+            Visibility=(
+                "visibility",
+                "mean",
+            ),
+        )
+        .sort_values(
+            "measured_at_utc"
+        )
+    )
 
-            coverage_by_city = (
-                filtered_df
-                .groupby(
-                    "city_name",
-                    as_index=False,
-                )
-                .agg(
-                    city_hours=(
-                        "measured_at_utc",
-                        "size",
-                    ),
-                    sensor_hours=(
-                        "has_sensor_data",
-                        "sum",
-                    ),
-                )
-            )
+    # ---------------------------------------------------------------
+    # Weather secondary cards
+    # ---------------------------------------------------------------
 
-            coverage_by_city[
-                "coverage_pct"
-            ] = (
-                coverage_by_city[
-                    "sensor_hours"
-                ]
-                / coverage_by_city[
-                    "city_hours"
-                ]
-                * 100
-            )
+    weather_card_1, weather_card_2, weather_card_3, weather_card_4 = (
+        st.columns(4)
+    )
 
-            coverage_chart = (
-                coverage_by_city[
-                    [
-                        "city_name",
-                        "coverage_pct",
-                    ]
-                ]
-                .sort_values(
-                    "coverage_pct",
-                    ascending=False,
-                )
-                .set_index(
-                    "city_name"
-                )
-                .rename(
-                    columns={
-                        "coverage_pct":
-                            "Sensor Coverage (%)"
-                    }
-                )
-            )
+    weather_card_1.metric(
+        "Precipitation",
+        f"{latest_average('precipitation'):.2f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['precipitation'].mean():.2f}"
+        ),
+        delta_color="off",
+    )
 
-            st.bar_chart(
-                coverage_chart,
-                height=350,
-            )
+    weather_card_2.metric(
+        "Surface Pressure",
+        f"{latest_average('surface_pressure'):.1f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['surface_pressure'].mean():.1f}"
+        ),
+        delta_color="off",
+    )
 
-        # -----------------------------------------------------------
-        # Sensor difference
-        # -----------------------------------------------------------
+    weather_card_3.metric(
+        "Cloud Cover",
+        f"{latest_average('cloud_cover'):.0f}%",
+        delta=(
+            f"Avg "
+            f"{filtered_df['cloud_cover'].mean():.0f}%"
+        ),
+        delta_color="off",
+    )
 
-        sensor_df = filtered_df[
-            filtered_df[
-                "has_sensor_data"
-            ]
-        ].copy()
+    weather_card_4.metric(
+        "Visibility",
+        f"{latest_average('visibility'):.0f}",
+        delta=(
+            f"Avg "
+            f"{filtered_df['visibility'].mean():.0f}"
+        ),
+        delta_color="off",
+    )
 
-        with chart_right:
+    # ---------------------------------------------------------------
+    # Temperature + humidity
+    # ---------------------------------------------------------------
 
-            st.markdown(
-                "#### Avg |PM2.5 Sensor − Batch|"
-            )
+    weather_left, weather_right = (
+        st.columns(2)
+    )
 
-            if sensor_df.empty:
-
-                st.info(
-                    "No overlapping sensor data exists "
-                    "for this filter selection."
-                )
-
-            else:
-
-                sensor_df[
-                    "abs_pm2_5_difference"
-                ] = (
-                    sensor_df[
-                        "pm2_5_sensor_minus_batch"
-                    ].abs()
-                )
-
-                difference_by_city = (
-                    sensor_df
-                    .groupby(
-                        "city_name",
-                        as_index=False,
-                    )
-                    .agg(
-                        avg_abs_difference=(
-                            "abs_pm2_5_difference",
-                            "mean",
-                        )
-                    )
-                    .sort_values(
-                        "avg_abs_difference",
-                        ascending=False,
-                    )
-                )
-
-                difference_chart = (
-                    difference_by_city
-                    .set_index(
-                        "city_name"
-                    )
-                    .rename(
-                        columns={
-                            "avg_abs_difference":
-                                "Avg absolute difference"
-                        }
-                    )
-                )
-
-                st.bar_chart(
-                    difference_chart,
-                    height=350,
-                )
-
-        st.divider()
-
-        # -----------------------------------------------------------
-        # Largest divergences
-        # -----------------------------------------------------------
+    with weather_left:
 
         st.markdown(
-            "#### Largest PM2.5 Batch vs Sensor Divergences"
+            "#### Temperature"
         )
 
-        st.caption(
-            "Sensor minus batch is a comparison metric, "
-            "not an error measurement. The batch API is "
-            "not treated as ground truth."
+        temperature_fig = px.line(
+            weather_hourly,
+            x="measured_at_utc",
+            y="Temperature",
+            labels={
+                "measured_at_utc":
+                    "Time",
+                "Temperature":
+                    "Temperature",
+            },
         )
 
-        if sensor_df.empty:
+        temperature_fig = compact_figure(
+            temperature_fig,
+            height=270,
+            show_legend=False,
+        )
 
-            st.info(
-                "No integrated sensor observations "
-                "exist for this filter selection."
-            )
+        st.plotly_chart(
+            temperature_fig,
+            use_container_width=True,
+        )
 
-        else:
+    with weather_right:
 
-            divergence_table = sensor_df[
-                [
-                    "measured_at_utc",
-                    "city_name",
-                    "country_code",
-                    "pm2_5",
-                    "sensor_avg_pm2_5",
-                    "pm2_5_sensor_minus_batch",
-                    "sensor_event_count",
-                ]
-            ].copy()
+        st.markdown(
+            "#### Relative Humidity"
+        )
 
-            divergence_table[
-                "absolute_difference"
-            ] = (
-                divergence_table[
-                    "pm2_5_sensor_minus_batch"
-                ].abs()
-            )
+        humidity_fig = px.area(
+            weather_hourly,
+            x="measured_at_utc",
+            y="Humidity",
+            labels={
+                "measured_at_utc":
+                    "Time",
+                "Humidity":
+                    "Humidity (%)",
+            },
+        )
 
-            divergence_table = (
-                divergence_table
-                .sort_values(
-                    "absolute_difference",
-                    ascending=False,
-                )
-                .head(20)
-            )
+        humidity_fig = compact_figure(
+            humidity_fig,
+            height=270,
+            show_legend=False,
+        )
 
-            numeric_display_columns = [
-                "pm2_5",
-                "sensor_avg_pm2_5",
-                "pm2_5_sensor_minus_batch",
-                "absolute_difference",
+        st.plotly_chart(
+            humidity_fig,
+            use_container_width=True,
+        )
+
+    # ---------------------------------------------------------------
+    # Rain + pressure
+    # ---------------------------------------------------------------
+
+    weather_left_2, weather_right_2 = (
+        st.columns(2)
+    )
+
+    with weather_left_2:
+
+        st.markdown(
+            "#### Precipitation & Rain"
+        )
+
+        rain_fig = px.bar(
+            weather_hourly,
+            x="measured_at_utc",
+            y=[
+                "Precipitation",
+                "Rain",
+            ],
+            barmode="group",
+            labels={
+                "measured_at_utc":
+                    "Time",
+                "value":
+                    "Amount",
+                "variable":
+                    "Metric",
+            },
+        )
+
+        rain_fig = compact_figure(
+            rain_fig,
+            height=270,
+        )
+
+        st.plotly_chart(
+            rain_fig,
+            use_container_width=True,
+        )
+
+    with weather_right_2:
+
+        st.markdown(
+            "#### Surface Pressure"
+        )
+
+        pressure_fig = px.line(
+            weather_hourly,
+            x="measured_at_utc",
+            y="Pressure",
+            labels={
+                "measured_at_utc":
+                    "Time",
+                "Pressure":
+                    "Surface Pressure",
+            },
+        )
+
+        pressure_fig = compact_figure(
+            pressure_fig,
+            height=270,
+            show_legend=False,
+        )
+
+        st.plotly_chart(
+            pressure_fig,
+            use_container_width=True,
+        )
+
+    # ---------------------------------------------------------------
+    # Cloud + wind
+    # ---------------------------------------------------------------
+
+    weather_left_3, weather_right_3 = (
+        st.columns(2)
+    )
+
+    with weather_left_3:
+
+        st.markdown(
+            "#### Cloud Cover"
+        )
+
+        cloud_fig = px.area(
+            weather_hourly,
+            x="measured_at_utc",
+            y="Cloud_Cover",
+            labels={
+                "measured_at_utc":
+                    "Time",
+                "Cloud_Cover":
+                    "Cloud Cover (%)",
+            },
+        )
+
+        cloud_fig = compact_figure(
+            cloud_fig,
+            height=270,
+            show_legend=False,
+        )
+
+        st.plotly_chart(
+            cloud_fig,
+            use_container_width=True,
+        )
+
+    with weather_right_3:
+
+        st.markdown(
+            "#### Wind Speed"
+        )
+
+        wind_fig = px.line(
+            weather_hourly,
+            x="measured_at_utc",
+            y="Wind_Speed",
+            labels={
+                "measured_at_utc":
+                    "Time",
+                "Wind_Speed":
+                    "Wind Speed",
+            },
+        )
+
+        wind_fig = compact_figure(
+            wind_fig,
+            height=270,
+            show_legend=False,
+        )
+
+        st.plotly_chart(
+            wind_fig,
+            use_container_width=True,
+        )
+
+    st.divider()
+
+    # ===============================================================
+    # DETAIL TABLE — hidden by default
+    # ===============================================================
+
+    with st.expander(
+        "View hourly environmental observations"
+    ):
+
+        observation_columns = [
+            "measured_at_local",
+            "city_name",
+            "country_name",
+
+            "us_aqi",
+            "air_quality_status",
+
+            "pm2_5",
+            "pm10",
+            "carbon_monoxide",
+            "nitrogen_dioxide",
+            "sulphur_dioxide",
+            "ozone",
+
+            "temperature_2m",
+            "relative_humidity_2m",
+            "precipitation",
+            "rain",
+
+            "surface_pressure",
+            "cloud_cover",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "visibility",
+            "weather_code",
+        ]
+
+        observations = (
+            filtered_df[
+                observation_columns
             ]
-
-            divergence_table[
-                numeric_display_columns
-            ] = divergence_table[
-                numeric_display_columns
-            ].round(2)
-
-            divergence_table = (
-                divergence_table
-                .rename(
-                    columns={
-                        "measured_at_utc":
-                            "Hour (UTC)",
-                        "city_name":
-                            "City",
-                        "country_code":
-                            "Country",
-                        "pm2_5":
-                            "Batch PM2.5",
-                        "sensor_avg_pm2_5":
-                            "Sensor PM2.5",
-                        "pm2_5_sensor_minus_batch":
-                            "Sensor − Batch",
-                        "absolute_difference":
-                            "|Difference|",
-                        "sensor_event_count":
-                            "Sensor Events",
-                    }
-                )
+            .sort_values(
+                "measured_at_local",
+                ascending=False,
             )
+            .head(500)
+        )
 
-            st.dataframe(
-                divergence_table,
-                width="stretch",
-                hide_index=True,
-            )
-
-
+        st.dataframe(
+            observations,
+            use_container_width=True,
+            hide_index=True,
+        )
 # ===================================================================
 # REALTIME
 # ===================================================================
