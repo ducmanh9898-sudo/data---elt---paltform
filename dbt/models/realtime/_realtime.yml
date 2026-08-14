@@ -1,0 +1,92 @@
+version: 2
+
+models:
+  - name: live_sensor_status
+    description: >
+      Current health and activity status of the native
+      streaming sensor pipeline.
+
+    columns:
+      - name: latest_processed_at
+        data_tests:
+          - not_null
+
+      - name: seconds_since_last_processed
+        data_tests:
+          - not_null
+
+      - name: events_last_1m
+        data_tests:
+          - not_null
+
+      - name: events_last_5m
+        data_tests:
+          - not_null
+
+      - name: active_cities_last_5m
+        data_tests:
+          - not_null
+
+      - name: is_live
+        data_tests:
+          - not_null
+
+
+  - name: live_sensor_latest_by_city
+    description: >
+      Latest canonical IoT sensor reading available
+      for each production city.
+
+    columns:
+      - name: city_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: event_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: device_id
+        data_tests:
+          - not_null
+
+      - name: event_time_utc
+        data_tests:
+          - not_null
+
+      - name: processed_at
+        data_tests:
+          - not_null
+
+      - name: is_live
+        data_tests:
+          - not_null
+
+
+  - name: live_sensor_timeseries_1min
+    description: >
+      One-minute sensor aggregates for the most recent
+      60 minutes, designed for realtime dashboard charts.
+
+    columns:
+      - name: city_minute_key
+        data_tests:
+          - not_null
+          - unique
+
+      - name: city_id
+        data_tests:
+          - not_null
+
+      - name: minute_utc
+        data_tests:
+          - not_null
+
+      - name: sensor_event_count
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments:
+                min_value: 1
