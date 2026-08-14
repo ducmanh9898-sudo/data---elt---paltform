@@ -68,3 +68,5 @@ flink/lib/*.jar
 
 # Maven build output
 **/target/
+
+.venv-dashboard/
